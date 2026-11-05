@@ -96,7 +96,7 @@ export default function App() {
         <XAxis dataKey="label" tick={{ fill: '#8190a6', fontSize: 11 }} axisLine={{ stroke: '#263246' }} tickLine={false} minTickGap={28}/>
         <YAxis yAxisId="growth" orientation="left" tick={{ fill: '#8190a6', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `${v} GB`} width={64}/>
         <YAxis yAxisId="total" orientation="right" tick={{ fill: '#8190a6', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `${v} GB`} width={72}/>
-        <Tooltip contentStyle={{ background: '#101827', border: '1px solid #29364a', borderRadius: 10, color: '#e8eef7' }} labelStyle={{ color: '#a8b5c8' }} formatter={(value: number | string, name: string | number) => [fmtBytes(Number(value) * 1_000_000_000), name === 'growth_gb' ? 'New storage' : 'Lifetime storage']}/>
+        <Tooltip contentStyle={{ background: '#101827', border: '1px solid #29364a', borderRadius: 10, color: '#e8eef7' }} labelStyle={{ color: '#a8b5c8' }} formatter={(value: unknown, name: unknown) => [fmtBytes(Number(value) * 1_000_000_000), name === 'growth_gb' ? 'New storage' : 'Lifetime storage']}/>
         <Bar yAxisId="growth" dataKey="growth_gb" name="growth_gb" fill="#647ff2" radius={[3,3,0,0]} maxBarSize={24}/>
         <Line yAxisId="total" dataKey="cumulative_gb" name="cumulative_gb" type="monotone" stroke="#39c6a5" strokeWidth={2.5} dot={false} activeDot={{ r: 4, fill: '#39c6a5' }}/>
       </ComposedChart></ResponsiveContainer> : <div className="chart-empty">No attachment data in this time range.</div>}</div>
