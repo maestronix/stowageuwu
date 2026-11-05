@@ -93,7 +93,7 @@ class StorageBot(commands.Bot):
         found: dict[int, object] = {}
         forum_parents: list[discord.ForumChannel] = []
         for channel in guild.channels:
-            if isinstance(channel, discord.TextChannel):
+            if isinstance(channel, (discord.TextChannel, discord.VoiceChannel, discord.StageChannel)):
                 found[channel.id] = channel
             elif isinstance(channel, discord.ForumChannel):
                 forum_parents.append(channel)
