@@ -64,10 +64,12 @@ See [docs/architecture.md](docs/architecture.md) for the implementation model, f
 
 ## Maintenance
 
-Rebuild the hourly/daily aggregates from the immutable attachment table if needed:
+Rebuild the hourly/daily aggregates from the immutable attachment table if needed. Stop the scanner first so it cannot ingest while the aggregate tables are being rebuilt:
 
 ```bash
-docker compose exec scanner python -m app.rebuild_stats
+docker compose stop scanner
+docker compose run --rm scanner python -m app.rebuild_stats
+docker compose start scanner
 ```
 
 Health endpoint (inside the Compose network): `GET /health`.
