@@ -90,28 +90,29 @@ class StorageBot(commands.Bot):
 
     async def discover_channels(self, guild: discord.Guild) -> list:
         found: dict[int, object] = {}
+        forum_parents: list[discord.ForumChannel] = []
         for channel in guild.channels:
-            if isinstance(channel, (discord.TextChannel, discord.ForumChannel)):
+            if isinstance(channel, discord.TextChannel):
                 found[channel.id] = channel
+            elif isinstance(channel, discord.ForumChannel):
+                forum_parents.append(channel)
         for thread in guild.threads:
             found[thread.id] = thread
+        # Forum parent channels are discovery containers, not message histories.
+        for channel in forum_parents:
+            try:
+                async for thread in channel.archived_threads(limit=None):
+                    found[thread.id] = thread
+            except (discord.Forbidden, discord.HTTPException, AttributeError) as exc:
+                log.debug("Could not enumerate archived forum posts for %s: %s", channel.id, exc)
         # Archived public/private threads are exposed only where the bot has permission.
-        for channel in list(found.values()):
-            if not isinstance(channel, (discord.TextChannel, discord.ForumChannel)):
-                continue
-            if isinstance(channel, discord.ForumChannel):
+        for channel in [c for c in guild.channels if isinstance(c, discord.TextChannel)]:
+            for private, joined in ((False, False), (True, False), (True, True)):
                 try:
-                    async for thread in channel.archived_threads(limit=None):
+                    async for thread in channel.archived_threads(limit=None, private=private, joined=joined):
                         found[thread.id] = thread
-                except (discord.Forbidden, discord.HTTPException, AttributeError) as exc:
-                    log.debug("Could not enumerate archived forum posts for %s: %s", channel.id, exc)
-            else:
-                for private, joined in ((False, False), (True, False), (True, True)):
-                    try:
-                        async for thread in channel.archived_threads(limit=None, private=private, joined=joined):
-                            found[thread.id] = thread
-                    except (discord.Forbidden, discord.HTTPException, AttributeError, TypeError) as exc:
-                        log.debug("Could not enumerate archived threads for %s (private=%s joined=%s): %s", channel.id, private, joined, exc)
+                except (discord.Forbidden, discord.HTTPException, AttributeError, TypeError) as exc:
+                    log.debug("Could not enumerate archived threads for %s (private=%s joined=%s): %s", channel.id, private, joined, exc)
         return list(found.values())
 
     async def scan_channel(self, channel, *, initial: bool = False) -> tuple[int, int]:
