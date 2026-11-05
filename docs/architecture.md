@@ -60,7 +60,7 @@ Discord.py handles Discord's route/global rate limits. The scanner deliberately 
 
 ### Visibility limits
 
-The bot needs View Channel and Read Message History in every target channel. Archived private thread enumeration depends on Discord permissions (Manage Threads or membership in the thread). The bot can only inventory messages/attachments that Discord still exposes to it. Content deleted before the first scan cannot be recovered.
+The bot needs the privileged Message Content Intent enabled in the Developer Portal, plus View Channel and Read Message History in every target channel. Discord gates attachment metadata behind Message Content Intent, including for historical message reads. Archived private thread enumeration depends on Discord permissions (Manage Threads or membership in the thread). The bot can only inventory messages/attachments that Discord still exposes to it. Content deleted before the first scan cannot be recovered.
 
 ## Historical semantics
 
