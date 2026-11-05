@@ -1,94 +1,75 @@
 # stowageuwu
 
-Discord attachment storage analytics. The bot inventories every accessible attachment in a server, records its original message timestamp and byte size, and exposes historical growth analytics through a small web dashboard.
+Self-hosted Discord attachment storage analytics. The scanner inventories accessible attachments without downloading their contents, records the parent message's original timestamp and exact byte size, and exposes historical growth through a web dashboard.
 
-## Project status
+## Features
 
-The repository is being bootstrapped. The first implementation targets a single Discord guild and a self-hosted Docker Compose deployment.
+- Initial historical backfill of accessible text, voice, and stage channels, forum posts, active threads, and listable archived threads.
+- Idempotent attachment ingestion keyed by Discord attachment ID.
+- Persistent per-channel/thread cursors; an interrupted scan resumes from the last committed page.
+- Gateway ingestion for new messages and attachment additions on message edits.
+- Periodic reconciliation (default: every 6 hours) to recover events missed while the bot/API/database was unavailable.
+- PostgreSQL source-of-truth records plus rebuildable hourly and daily aggregates.
+- Dashboard with lifetime storage, attachment count, 24h/30d growth, scanner progress, and a combined cumulative-line + growth-bar chart.
+- Time presets: 24h, 7d, 30d, 1y, plus custom start/end date-times.
+- No attachment downloads, content inspection, file-type classification, filename search, or per-channel analytics UI.
 
-## Goals
+## Quick start
 
-- Backfill the accessible message history of every guild text channel and thread, including archived public/private threads where the bot has permission.
-- Store attachment metadata only. Attachment bodies are never downloaded.
-- Treat attachments as immutable historical records: an attachment is inserted once, keyed by Discord's attachment ID, and is not removed when a Discord message later disappears.
-- Attribute every byte to the Discord message's created_at timestamp, never to the time the scanner discovered it.
-- Resume an interrupted backfill safely.
-- Continue tracking new attachments from gateway events and periodic per-channel reconciliation.
-- Show lifetime uploaded bytes and interval growth in one combined chart: cumulative line plus growth bars.
-- Support 24h, 7d, 30d, 1y, and arbitrary custom date/time ranges.
+1. Create a Discord application and add a Bot user.
+2. Invite it to the target server with the `bot` OAuth scope and these permissions:
+   - View Channels
+   - Read Message History
+   - Connect (for message history in voice/stage channels)
+   - Manage Threads is recommended if you want the bot to enumerate archived private threads it has not joined.
+3. Enable the privileged Message Content Intent in the Discord Developer Portal (Bot → Privileged Gateway Intents). Discord gates attachment metadata behind this intent, including when reading message history. The bot does not need the Server Members Intent.
+4. Copy `.env.example` to `.env` and fill in:
+   - `DISCORD_TOKEN`
+   - `DISCORD_GUILD_ID`
+   - `POSTGRES_PASSWORD` (use a long URL-safe value, e.g. hexadecimal)
+5. Start the stack:
 
-## Explicit non-goals
+   ```bash
+   docker compose up -d --build
+   ```
 
-- Downloading attachment contents.
-- Classifying binary attachments by MIME type or file extension.
-- Searching/browsing individual attachment filenames.
-- Per-channel analytics UI (channel IDs remain in the database for scanner cursors and diagnostics).
-- Deletion tracking or subtracting deleted attachments from historical totals.
-- Storing attachment CDN URLs.
+6. The dashboard listens on `127.0.0.1:8098` by default. Put it behind your reverse proxy and add authentication/access restrictions there. The API is only exposed inside the Compose network.
 
-## Architecture
+The PostgreSQL data directory is `./data/postgres`. Back it up as part of the deployment. Never commit `.env` or the database directory.
 
-- Scanner: Python 3.12, discord.py. Handles initial backfill, gateway events, and reconciliation.
-- API: FastAPI, read-only analytics endpoints plus health endpoint.
-- Database: PostgreSQL. Raw attachment rows are the source of truth; hourly/daily buckets are rebuildable query accelerators.
-- Dashboard: React + TypeScript + Vite + Recharts.
-- Deployment: Docker Compose. The dashboard/API can sit behind an existing reverse proxy; no TLS termination is performed in the stack.
+## Configuration
 
-The scanner and API are separate processes so long-running Discord history scans cannot block dashboard requests.
+| Variable | Default | Purpose |
+|---|---|---|
+| `DISCORD_TOKEN` | required | Bot token |
+| `DISCORD_GUILD_ID` | required | Single target server ID |
+| `POSTGRES_PASSWORD` | required | PostgreSQL password |
+| `RECONCILE_MINUTES` | `360` | Periodic full channel-cursor reconciliation interval; minimum 5 minutes |
+| `DASHBOARD_BIND` | `127.0.0.1` | Host bind address for the dashboard port |
+| `DASHBOARD_PORT` | `8098` | Host port for the dashboard |
+| `LOG_LEVEL` | `INFO` | Scanner log level |
 
-## Data model
+If the reverse proxy itself runs in Docker, either route to the host's reachable address/port or adjust `DASHBOARD_BIND` and firewall rules accordingly. Do not expose the unauthenticated dashboard/API directly to the public internet.
 
-### attachments
+## Data and analytics
 
-One row per Discord attachment, unique on attachment_id:
+- Each attachment row stores only attachment ID, message ID, channel ID, size in bytes, original message timestamp, and first-seen timestamp. Filenames, CDN URLs, MIME types, and file bodies are not stored.
+- Attachment IDs are unique. Replaying a page or processing the same attachment through both a gateway event and reconciliation cannot double-count it.
+- All timestamps and buckets are UTC. Charts use the message's creation timestamp, never the scanner's discovery timestamp.
+- Hourly buckets power ranges up to 24 hours; daily buckets power longer ranges. Partial first/last buckets for custom ranges are calculated against raw attachment rows so the requested bounds are respected.
+- Lifetime storage is the sum of all unique attachment sizes ever observed. The server is treated as append-only: records are never deleted or decremented.
+- PostgreSQL is initially unpartitioned. One million or several million rows are an ordinary workload; measure before adding partitioning.
 
-- attachment_id (Discord snowflake, primary key)
-- message_id
-- channel_id
-- filename (opaque/random name; retained as metadata, not exposed as a search feature)
-- size_bytes (exact byte count from Discord metadata)
-- message_created_at (UTC timestamp from the parent message)
-- first_seen_at (UTC timestamp when this installation discovered it)
+See [docs/architecture.md](docs/architecture.md) for the implementation model, failure handling, and design decisions.
 
-The original message timestamp is the event time used for every chart. first_seen_at is operational metadata only.
+## Maintenance
 
-### scan_state
+Rebuild the hourly/daily aggregates from the immutable attachment table if needed. Stop the scanner first so it cannot ingest while the aggregate tables are being rebuilt:
 
-One row per channel/thread with the latest fully processed message snowflake, last successful scan time, status, and error information. The cursor advances only after a page has been committed. Reconciliation uses a small overlap and ON CONFLICT DO NOTHING, so retries are safe.
+```bash
+docker compose stop scanner
+docker compose run --rm scanner python -m app.rebuild_stats
+docker compose start scanner
+```
 
-### storage_stats_hourly and storage_stats_daily
-
-Rebuildable aggregates keyed by UTC bucket timestamp. They store the number of attachments and sum of bytes whose message creation time falls inside the bucket. They are not the source of truth and can be rebuilt from attachments.
-
-The cumulative line is calculated as the sum of all historical bytes through each point. Growth bars show bytes added inside each bucket. The initial backfill is therefore attributed to the original posting dates instead of appearing as growth on the day the bot was installed.
-
-## Scanning lifecycle
-
-1. On startup, discover the guild's accessible text channels and active threads.
-2. Discover archived public/private threads where Discord permits listing them.
-3. Backfill each channel/thread in descending message order using Discord history pagination.
-4. Insert attachment rows idempotently and persist each channel cursor after successful page processing.
-5. Once backfill is complete, keep gateway message events enabled for low-latency ingestion.
-6. Periodically reconcile each channel from its saved cursor with an overlap. Events and reconciliation can race safely because attachment IDs are unique.
-7. Rebuild affected hourly/daily buckets transactionally after each ingest batch (or in bounded batches during backfill).
-
-Discord permissions and API visibility define the maximum inventory: the bot needs View Channel and Read Message History for every target channel. Some archived/private threads may not be listable unless the bot has the required access. Messages or attachments deleted before the bot can see them cannot be recovered through the API.
-
-## Analytics semantics
-
-- All timestamps and buckets are UTC.
-- Storage is decimal bytes summed exactly in PostgreSQL BIGINT; presentation converts to GB/TB.
-- Lifetime uploaded storage is the sum of all unique attachment sizes ever observed, grouped by original message timestamp. Given the server's stated append-only behavior, this is also the current total inventory.
-- Growth is the sum of sizes of attachments whose parent messages were created in the selected interval.
-- Presets: last 24 hours, 7 days, 30 days, and 1 year. Custom ranges accept explicit start/end timestamps.
-- Buckets are hourly for ranges up to 24 hours and daily for longer ranges. Empty buckets are returned as zero so charts do not have gaps.
-- The line and bars share one time axis. A composed chart uses a cumulative line and per-bucket growth bars; separate axes may be used because cumulative totals and interval increments have different scales.
-
-## Operational notes
-
-- Set DISCORD_TOKEN and DISCORD_GUILD_ID; never commit secrets.
-- The bot does not need the privileged Message Content intent to inspect attachment metadata.
-- The bot needs the guilds and messages gateway intents, plus channel/history permissions.
-- Discord API rate limits must be respected. Backfill concurrency should be conservative and configurable.
-- PostgreSQL is intentionally unpartitioned initially. One million or several million metadata rows are ordinary for PostgreSQL; add partitioning only if measured query/maintenance pressure justifies it.
-- Keep raw attachment rows permanently. Aggregate tables can always be regenerated from them.
+Health endpoint (inside the Compose network): `GET /health`.
