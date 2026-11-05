@@ -184,6 +184,9 @@ class StorageBot(commands.Bot):
     @reconcile_loop.before_loop
     async def before_reconcile(self):
         await self.wait_until_ready()
+        # tasks.loop runs its first iteration immediately; delay it so the first
+        # reconciliation happens one full interval after the initial backfill.
+        await asyncio.sleep(RECONCILE_MINUTES * 60)
 
 async def main():
     bot = StorageBot()
