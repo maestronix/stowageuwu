@@ -27,9 +27,9 @@ const localInput = (date: Date) => {
 }
 const rangeFor = (preset: Preset) => {
   const end = new Date(), start = new Date(end)
-  if (preset === '24h') start.setHours(start.getHours() - 24)
-  if (preset === '7d') start.setDate(start.getDate() - 7)
-  if (preset === '30d') start.setDate(start.getDate() - 30)
+  if (preset === '24h') start.setTime(end.getTime() - 24 * 60 * 60 * 1000)
+  if (preset === '7d') start.setTime(end.getTime() - 7 * 24 * 60 * 60 * 1000)
+  if (preset === '30d') start.setTime(end.getTime() - 30 * 24 * 60 * 60 * 1000)
   if (preset === '1y') start.setFullYear(start.getFullYear() - 1)
   return { start: localInput(start), end: localInput(end) }
 }
