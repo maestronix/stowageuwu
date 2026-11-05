@@ -21,7 +21,7 @@ Self-hosted Discord attachment storage analytics. The scanner inventories access
    - View Channels
    - Read Message History
    - Manage Threads is recommended if you want the bot to enumerate archived private threads it has not joined.
-3. No privileged gateway intents need to be enabled for stowageuwu. It uses guild and message events and does not read message content.
+3. Enable the privileged Message Content Intent in the Discord Developer Portal (Bot → Privileged Gateway Intents). Discord gates attachment metadata behind this intent, including when reading message history. The bot does not need the Server Members Intent.
 4. Copy `.env.example` to `.env` and fill in:
    - `DISCORD_TOKEN`
    - `DISCORD_GUILD_ID`
