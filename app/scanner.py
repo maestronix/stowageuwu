@@ -18,6 +18,7 @@ RECONCILE_MINUTES = max(5, int(os.getenv("RECONCILE_MINUTES", "360")))
 intents = discord.Intents.none()
 intents.guilds = True
 intents.messages = True
+intents.message_content = True
 
 class StorageBot(commands.Bot):
     def __init__(self):
