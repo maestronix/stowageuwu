@@ -4,7 +4,7 @@ Self-hosted Discord attachment storage analytics. The scanner inventories access
 
 ## Features
 
-- Initial historical backfill of accessible text channels, forum posts, active threads, and listable archived threads.
+- Initial historical backfill of accessible text, voice, and stage channels, forum posts, active threads, and listable archived threads.
 - Idempotent attachment ingestion keyed by Discord attachment ID.
 - Persistent per-channel/thread cursors; an interrupted scan resumes from the last committed page.
 - Gateway ingestion for new messages and attachment additions on message edits.
@@ -20,6 +20,7 @@ Self-hosted Discord attachment storage analytics. The scanner inventories access
 2. Invite it to the target server with the `bot` OAuth scope and these permissions:
    - View Channels
    - Read Message History
+   - Connect (for message history in voice/stage channels)
    - Manage Threads is recommended if you want the bot to enumerate archived private threads it has not joined.
 3. Enable the privileged Message Content Intent in the Discord Developer Portal (Bot → Privileged Gateway Intents). Discord gates attachment metadata behind this intent, including when reading message history. The bot does not need the Server Members Intent.
 4. Copy `.env.example` to `.env` and fill in:
