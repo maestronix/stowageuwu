@@ -1,0 +1,48 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: stowageuwu
+      POSTGRES_USER: stowageuwu
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stowageuwu -d stowageuwu"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  scanner:
+    build: .
+    restart: unless-stopped
+    command: ["python", "-m", "app.scanner"]
+    environment:
+      DATABASE_URL: postgresql://stowageuwu:${POSTGRES_PASSWORD}@postgres:5432/stowageuwu
+      DISCORD_TOKEN: ${DISCORD_TOKEN:?Set DISCORD_TOKEN in .env}
+      DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:?Set DISCORD_GUILD_ID in .env}
+      RECONCILE_MINUTES: ${RECONCILE_MINUTES:-360}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build: .
+    restart: unless-stopped
+    command: ["uvicorn", "app.api:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      DATABASE_URL: postgresql://stowageuwu:${POSTGRES_PASSWORD}@postgres:5432/stowageuwu
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  dashboard:
+    build: ./web
+    restart: unless-stopped
+    ports:
+      - "${DASHBOARD_BIND:-127.0.0.1}:${DASHBOARD_PORT:-8098}:80"
+    depends_on:
+      - api
